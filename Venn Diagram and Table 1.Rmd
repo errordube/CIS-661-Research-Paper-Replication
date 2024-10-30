@@ -1,0 +1,157 @@
+---
+title: "Venn Diagram and Table 1"
+author: "Aditya Dube"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Packages}
+library(VennDiagram)
+library(readxl)
+library(kableExtra)
+library(dplyr)
+library(gt)
+```
+
+
+```{r Load Dataset}
+# Load the dataset (ignoring metadata rows starting with '!')
+file_path <- "Venn Diagram_AF1.xlsx"
+f_vs_m <- read_excel(file_path, sheet = "FvsM")
+y_vs_o <- read_excel(file_path, sheet = "YvsO")
+```
+
+```{r Extract the probe set IDs}
+f_vs_m_probes <- f_vs_m[[1]]  # Probe IDs are in the first column
+y_vs_o_probes <- y_vs_o[[1]]  # Probe IDs are in the first column
+```
+
+```{r Create sets from the probes}
+f_vs_m_set <- unique(f_vs_m_probes)
+y_vs_o_set <- unique(y_vs_o_probes)
+```
+
+```{r Calculate intersection and set sizes}
+intersection_size <- length(intersect(f_vs_m_set, y_vs_o_set))
+f_vs_m_size <- length(f_vs_m_set)
+y_vs_o_size <- length(y_vs_o_set)
+```
+
+```{r Create the Venn diagram}
+venn.plot <- draw.pairwise.venn(
+  area1 = f_vs_m_size,
+  area2 = y_vs_o_size,
+  cross.area = intersection_size,
+  category = c("Male vs Female", "Young vs Old"),
+  fill = c("#FF9999", "#9999FF"),  # Softer colors
+  alpha = 0.5,                     # Transparency
+  lty = "solid",                    # Solid border
+  lwd = 2,                          # Thicker border
+  cex = 2.5,                        # Font size for numbers
+  cat.cex = 2,                      # Font size for labels
+  cat.col = c("#FF6666", "#6666FF"), # Custom label colors
+  cat.pos = c(-20, 20),             # Label positions
+  cat.dist = c(0.05, 0.05),         # Distance between label and circle
+  scaled = TRUE                     # Scale the circles better
+)
+```
+
+```{r Save the plot as a PNG file}
+png(filename = "venn_diagram.png", width = 800, height = 800)
+grid.draw(venn.plot)
+dev.off()
+```
+
+```{r Loading Data}
+# Read the Excel file 
+file_path <- "Table1.xlsx"
+f_vs_m_data <- read_excel(file_path, sheet = "Female vs Male", skip = 16)  # Start from row 17
+y_vs_o_data <- read_excel(file_path, sheet = "Young vs Old", skip = 20) # Start from row 21
+```
+
+```{r Select GO IDs}
+# List of GO-IDs to match the expected table
+selected_go_ids <- c(5575, 8150, 9987, 30154, 10468, 7399, 9653, 
+                     22008, 48699, 1525, 7420)
+```
+
+```{r}
+# Filter for significant GO-IDs (p < 0.05)
+female_vs_male_significant <- f_vs_m_data %>%
+  filter(`p-value` < 0.05, `GO-ID` %in% selected_go_ids)
+
+young_vs_old_significant <- y_vs_o_data %>%
+  filter(`p-value` < 0.05, `GO-ID` %in% selected_go_ids)
+
+```
+
+
+```{r Filter both datasets for the common GO IDs}
+female_filtered <- female_vs_male_significant %>%
+  select(`GO-ID`, Description, x, X) %>%
+  mutate(E = paste0(round((x / X) * 100), "% male"))
+
+young_filtered <- young_vs_old_significant %>%
+  select(`GO-ID`, Description, x, X) %>%
+  mutate(E = paste0(round((x / X) * 100), "% young"))
+```
+
+```{r}
+female_filtered <- female_filtered %>% distinct(`GO-ID`, .keep_all = TRUE)
+young_filtered <- young_filtered %>% distinct(`GO-ID`, .keep_all = TRUE)
+
+```
+
+
+```{r Merge the two filtered datasets}
+final_table <- merge(
+  female_filtered, young_filtered, by = c("GO-ID", "Description"), 
+  suffixes = c(" (F vs. M)", " (Y vs. O)")
+)
+```
+
+```{r Tables}
+# Select and reorder columns to match desired output
+final_table <- final_table %>%
+  select(`GO-ID`, Description, `x (F vs. M)`, `E (F vs. M)`, `x (Y vs. O)`, `E (Y vs. O)`)
+
+# Print the final table
+print(final_table)
+```
+
+```{r}
+# Create a styled gt table
+gt_table <- final_table %>%
+  gt() %>%
+  tab_header(
+    title = md("**Gene Ontology Comparisons by Gender and Age**")
+  ) %>%
+  cols_label(
+    `GO-ID` = "GO ID",
+    Description = "Description",
+    `x (F vs. M)` = "x (F vs. M)",
+    `E (F vs. M)` = "E (F vs. M)",
+    `x (Y vs. O)` = "x (Y vs. O)",
+    `E (Y vs. O)` = "E (Y vs. O)"
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_options(
+    table.font.size = "small",
+    table.width = pct(100)
+  ) %>%
+  opt_table_font(
+    font = "Times New Roman"
+  )
+
+# Render the gt table
+gt_table
+
+```
